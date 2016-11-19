@@ -23,15 +23,36 @@ along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import argparse
+import configparser
+import os
+from IPython import embed as IPS
+
+
+def load_config():
+    complete_config = configparser.ConfigParser()
+    complete_config.read('config.ini')
+
+    # create a shorthand for the default config
+    config = complete_config['DEFAULT']
+
+    return config
+
+
+def pull():
+    config = load_config()
 
 
 def main():
     parser = argparse.ArgumentParser(description='control a probdox repository')
     parser.add_argument('command', help='one of the following commands: push | pull | status')
 
-
     args = parser.parse_args()
     print(args.command)
+
+    if args.command == 'pull':
+        pull()
+
+    IPS()
 
 if __name__ == "__main__":
     main()
