@@ -104,7 +104,6 @@ def pull():
         transport.close()
 
         return
-    
 
     sftp.close()
     transport.close()
