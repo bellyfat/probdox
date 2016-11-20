@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# The code in this file is in Python 3 syntax
-
 # created: 2016-11-19 14:43:45 by Carsten Knoll
 
 """
@@ -95,14 +93,12 @@ def pull():
     pl = [gf.rpath for gf in gfl]
 
     # pdx file list path
-    pdx_flp = basedir + META_DATA_FNAME
+    pdx_flp = "%s/%s" % ( basedir, META_DATA_FNAME)
 
     if pdx_flp not in pl:
         log.err('probdox metadata not found. Cannot proceed. Please contact admin')
-
         sftp.close()
         transport.close()
-
         return
 
     sftp.close()
@@ -114,7 +110,7 @@ def keygen():
     # ssh-keygen -t rsa -b 4096 -C "label" -f ./pdx-key
 
 
-def main():
+def main(*args, **kwargs):
     parser = argparse.ArgumentParser(description='control a probdox repository')
     parser.add_argument('command', help='one of the following commands: push | pull | status | keygen')
 
@@ -123,8 +119,3 @@ def main():
 
     if args.command == 'pull':
         pull()
-
-    IPS()
-
-if __name__ == "__main__":
-    main()
