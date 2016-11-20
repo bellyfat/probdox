@@ -96,17 +96,56 @@ def load_config(path=None):
 
 def generate_reference_data(basedir=BASEDIR, version='01', user=None):
 
-    filepaths = ['foo/abc.txt',
+    # these data structures contain all possible reference files
+    # version differences are applied via diffs
+    filepaths = ['abc.txt',
+                 'foo/abc.txt',
+                 'foo/abc3.txt',
                  'bar/xyz.dat',
-                 'bar/blob/text1.txt'
+                 'bar/blob/text1.txt',
+                 'bar/blob/text2.txt'
                 ]
+    emptydirs = ['dir-empty1',
+                 'bar/dir-empty2,'
+                 ]
 
-    txt1 = "This is sample text\n\nversion %s\n" % version
+    # dict containing paths that should be absent in each version
+    absent_paths = {'01': ['foo/abc3.txt',
+                           'bar/blob/text2.txt',
+                           'dir-empty1'],
+                    '02': ['foo/abc3.txt'],
+                    '03': ['bar/blob/text2.txt']}
+
+    contents = {'01': "This is sample text.",
+                '02': "This is sample text.",
+                '03': "This is sample text\n\nversion 3.",
+                }
+
+    for ap in absent_paths[version]:
+        if ap in filepaths:
+            filepaths.remove(ap)
+        elif ap in emptydirs:
+            emptydirs.remove(ap)
+        else:
+            msg = "Could not remove %s from list because it was not found." % ap
+            IPS()
+            raise ValueError(msg)
+
+    txt = contents[version]
+
+    # clear legacy residues
+    tolerant_rmtree(basedir)
 
     for fp in filepaths:
         fp = fp.replace('/', os.path.sep)
         fp = os.path.join(basedir, fp)
-        write_file(fp, txt1)
+        write_file(fp, txt)
+
+    for d in emptydirs:
+        d = d.replace('/', os.path.sep)
+        d = os.path.join(basedir, d)
+        mkdir_p(d)
+
     print('Reference data created.')
 
     targetpath = os.path.join(basedir, META_DATA_FNAME)
@@ -237,4 +276,9 @@ def write_meta_data(targetpath, basedir, user):
 
 
 if __name__ == '__main__':
-    generate_reference_data(sys.argv[1])
+    log.msg(sys.argv)
+    # generate_reference_data(sys.argv[1], sys.argv[2])
+
+    for v in ['01', '02', '03']:
+        log.msg('version:', v)
+        generate_reference_data(sys.argv[1] + v, v)
