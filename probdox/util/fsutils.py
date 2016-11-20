@@ -37,6 +37,10 @@ BASEDIR = "reference"
 CONFIG_PATH = "config.ini"
 META_DATA_FNAME = 'metadata.pdx'
 
+# fname for the remote meta data file after download
+REMOTE_META_DATA_FNAME = 'metadata.pdx.remote'
+
+
 class Logger(object):
 
     def err(self, *args, **kwargs):
@@ -128,7 +132,6 @@ def generate_reference_tree(basedir=BASEDIR, version='01', user=None):
             emptydirs.remove(ap)
         else:
             msg = "Could not remove %s from list because it was not found." % ap
-            IPS()
             raise ValueError(msg)
 
     txt = contents[version]
@@ -217,8 +220,7 @@ class GeneralizedFile(object):
             return None
 
         if not self.isfile():
-            IPS()
-            assert False
+            raise ValueError('Unknown file type for %s' % self)
         blocksize = 65536
         hasher = hashlib.sha256()
         # copied from http://pythoncentral.io/hashing-files-with-python/
@@ -267,18 +269,33 @@ def generate_meta_data(basedir, user=None):
     return res_dict
 
 
+def write_json(obj, path):
+    with open(path, 'w') as myfile:
+        json.dump(obj, myfile, sort_keys=True, indent=4)
+
+
+def read_json(path):
+    with open(path, 'r') as myfile:
+        result = json.load(myfile)
+    return result
+
+
+
 def write_meta_data(targetpath, basedir, user):
 
     data_dict = generate_meta_data(basedir, user)
 
-    with open(targetpath, 'w') as myfile:
-        json.dump(data_dict, myfile, sort_keys=True, indent=4)
+    write_json(data_dict, targetpath)
 
 
 if __name__ == '__main__':
     log.msg(sys.argv)
     # generate_reference_data(sys.argv[1], sys.argv[2])
 
+    # !! this should come from the config file (but it is not present on the server)
+    local_data_dir = 'data'
+
     for v in ['01', '02', '03']:
         log.msg('version:', v)
-        generate_reference_tree(sys.argv[1] + v, v)
+        path = os.path.join(sys.argv[1] + v, local_data_dir)
+        generate_reference_tree(path, v)
