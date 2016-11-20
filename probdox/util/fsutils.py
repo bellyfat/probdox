@@ -24,10 +24,28 @@ import sys
 import os
 import shutil
 import errno
+import hashlib
+import json
+import configparser
+from IPython import embed as IPS
 
 # The code in this file is in Python 3 syntax
 # ensure the right interpreter is used
 assert sys.version_info[0] == 3
+
+BASEDIR = "reference"
+CONFIG_PATH = "config.ini"
+META_DATA_FNAME = 'metadata.pdx'
+
+class Logger(object):
+
+    def err(self, *args, **kwargs):
+        print("Err:", *args, **kwargs)
+
+    def msg(self, *args, **kwargs):
+        print("Msg:", *args, **kwargs)
+
+log = Logger()
 
 
 def mkdir_p(path):
@@ -64,7 +82,19 @@ def write_file(filepath, content):
         myfile.write(content)
 
 
-def generate_reference_data(basedir='reference', version='01'):
+def load_config(path=None):
+    if path is None:
+        path = CONFIG_PATH
+    complete_config = configparser.ConfigParser()
+    complete_config.read(path)
+
+    # create a shorthand for the default config
+    config = complete_config['DEFAULT']
+
+    return config
+
+
+def generate_reference_data(basedir=BASEDIR, version='01', user=None):
 
     filepaths = ['foo/abc.txt',
                  'bar/xyz.dat',
@@ -78,6 +108,132 @@ def generate_reference_data(basedir='reference', version='01'):
         fp = os.path.join(basedir, fp)
         write_file(fp, txt1)
     print('Reference data created.')
+
+    targetpath = os.path.join(basedir, META_DATA_FNAME)
+    write_meta_data(targetpath, basedir, user)
+
+
+class GeneralizedFile(object):
+    """
+    Hold information about a generalized file (file or directory)
+    """
+
+    def __init__(self, rpath, lpath=None):
+        self._isdir = None
+        self._isfile = None
+        self.hash_value = None
+
+        self.rpath = rpath
+        self.lpath = lpath
+
+        log.msg(self, "created")
+
+    def __repr__(self):
+        result = "GF(%s | %s)" % (self.rpath, self.lpath)
+        return result
+
+    def isdir(self, value=None):
+        if value is None:
+            return self._isdir
+        elif value in (True, False):
+            assert self._isdir is None
+            self._isdir = value
+            assert self._isfile is None
+            self._isfile = not value
+        else:
+            raise ValueError("Expexted True/False, got unknown Value: %s of type %s." % (value, type(value)))
+
+    def isfile(self, value=None):
+        if value is None:
+            return self._isfile
+        else:
+            if value in (True, False):
+                self.isdir(not value)
+            else:
+                # use error handling in the other method
+                self.isdir(value)
+
+    def get_type(self):
+        if None in (self._isdir, self._isfile):
+            # type not yet specified
+
+            # try to find out in local context
+            if self.lpath is None:
+                msg = "Can not find out type of %s without local path" % self
+                raise ValueError(msg)
+
+            self._isdir = os.path.isdir(self.lpath)
+            self._isfile = os.path.isfile(self.lpath)
+
+        if self._isdir:
+            return "dir"
+        elif self._isfile:
+            return 'file'
+        else:
+            return 'unspecified'
+
+    def calc_hash(self):
+        self.get_type()
+        if self.isdir():
+            return None
+
+        if not self.isfile():
+            IPS()
+            assert False
+        blocksize = 65536
+        hasher = hashlib.sha256()
+        # copied from http://pythoncentral.io/hashing-files-with-python/
+        with open(self.lpath, "rb") as myfile:
+            buf = myfile.read(blocksize)
+            while len(buf) > 0:
+                hasher.update(buf)
+                buf = myfile.read(blocksize)
+        return hasher.hexdigest()
+
+    def to_dict(self, user=None):
+        """
+
+        :return:        dictionary like {'a_path': ..., 'type': ..., 'hash': ...}
+        """
+        assert self.lpath is not None
+        result = {'hash': self.calc_hash(),
+                  'type': self.get_type(),
+                  'tstamp': None,
+                  'user': user}
+        return result
+
+
+def generate_meta_data(basedir, user=None):
+
+    # this is the top level dict for json
+    # it allows to store additional information (not related to any specific file)
+
+    res_dict = {}
+    filedict = {}  # this will become a dict like {fname1: {data1}, ...}
+    for root, dirs, files in os.walk(basedir):
+        # if len(dirs) == len(files) == 0:
+        #     # empty directory
+
+        gf = GeneralizedFile(rpath=None, lpath=root)
+        filedict[gf.lpath] = gf.to_dict(user=user)
+
+        for f in files:
+            path = os.path.join(root, f)
+            gf = GeneralizedFile(rpath=None, lpath=path)
+            filedict[gf.lpath] = gf.to_dict(user=user)
+
+    res_dict['meta_information'] = None
+    res_dict['files'] = filedict
+
+    return res_dict
+
+
+def write_meta_data(targetpath, basedir, user):
+
+    data_dict = generate_meta_data(basedir, user)
+
+    with open(targetpath, 'w') as myfile:
+        json.dump(data_dict, myfile, indent=4)
 
 
 if __name__ == '__main__':

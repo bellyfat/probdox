@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import sys
-
 # created: 2016-11-19 17:18:00 by Carsten Knoll
 
 """
@@ -22,11 +20,12 @@ You should have received a copy of the GNU General Public License
 along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import sys
+import unittest
+from probdox.util import fsutils
+
 from IPython import embed as IPS
 
-import unittest
-
-from probdox.util import fsutils
 
 # The code in this file is in Python 3 syntax
 # ensure the right interpreter is used
