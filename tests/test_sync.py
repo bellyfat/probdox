@@ -35,7 +35,7 @@ assert sys.version_info[0] == 3
 class TestSync1(unittest.TestCase):
 
     def setUp(self):
-        fsutils.generate_reference_data()
+        fsutils.generate_reference_tree()
 
     def tearDown(self):
         fsutils.tolerant_rmtree('reference')

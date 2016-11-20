@@ -94,7 +94,7 @@ def load_config(path=None):
     return config
 
 
-def generate_reference_data(basedir=BASEDIR, version='01', user=None):
+def generate_reference_tree(basedir=BASEDIR, version='01', user=None):
 
     # these data structures contain all possible reference files
     # version differences are applied via diffs
@@ -106,13 +106,13 @@ def generate_reference_data(basedir=BASEDIR, version='01', user=None):
                  'bar/blob/text2.txt'
                 ]
     emptydirs = ['dir-empty1',
-                 'bar/dir-empty2,'
+                 'bar/dir-empty2'
                  ]
 
     # dict containing paths that should be absent in each version
     absent_paths = {'01': ['foo/abc3.txt',
                            'bar/blob/text2.txt',
-                           'dir-empty1'],
+                           'bar/dir-empty2'],
                     '02': ['foo/abc3.txt'],
                     '03': ['bar/blob/text2.txt']}
 
@@ -272,7 +272,7 @@ def write_meta_data(targetpath, basedir, user):
     data_dict = generate_meta_data(basedir, user)
 
     with open(targetpath, 'w') as myfile:
-        json.dump(data_dict, myfile, indent=4)
+        json.dump(data_dict, myfile, sort_keys=True, indent=4)
 
 
 if __name__ == '__main__':
@@ -281,4 +281,4 @@ if __name__ == '__main__':
 
     for v in ['01', '02', '03']:
         log.msg('version:', v)
-        generate_reference_data(sys.argv[1] + v, v)
+        generate_reference_tree(sys.argv[1] + v, v)
