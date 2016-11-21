@@ -168,8 +168,6 @@ class GeneralizedFile(object):
         self.rpath = rpath
         self.lpath = lpath
 
-        log.msg(self, "created")
-
     def __repr__(self):
         result = "GF(%s | %s)" % (self.rpath, self.lpath)
         return result
@@ -244,6 +242,27 @@ class GeneralizedFile(object):
         return result
 
 
+def normalize_paths(pathseq, basedir):
+    """
+    truncate everythin before basedir
+
+    :param pathseq:     sequence of path strings
+    :return:
+    """
+
+    result = []
+    IPS()
+    for path in pathseq:
+        idx = path.find(basedir)
+        if idx == -1:
+            msg = "basedir '%s' was not found in path %s" % (basedir, path)
+            raise ValueError(msg)
+
+        result.append(path[idx:])
+
+    return result
+
+
 def generate_meta_data(basedir, user=None):
 
     # this is the top level dict for json
@@ -277,8 +296,8 @@ def write_json(obj, path):
 def read_json(path):
     with open(path, 'r') as myfile:
         result = json.load(myfile)
+    log.msg(path, 'read.')
     return result
-
 
 
 def write_meta_data(targetpath, basedir, user):

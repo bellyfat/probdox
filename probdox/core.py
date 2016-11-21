@@ -21,10 +21,12 @@ along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import sys
+import os
 import argparse
 import paramiko
 import stat
-from probdox.util.fsutils import log, GeneralizedFile, load_config, META_DATA_FNAME
+import probdox.util.fsutils as fsu
+from probdox.util.fsutils import log, GeneralizedFile
 
 from IPython import embed as IPS
 
@@ -33,76 +35,138 @@ from IPython import embed as IPS
 assert sys.version_info[0] == 3
 
 
-def get_gfile_list(sftp, rdir):
-    """
-    create a sorted list of paths to all generalized files
-    :param sftp:
-    :param rdir: remote directory (absolute path)
-    :return:
-    """
+class Manager(object):
 
-    if not rdir.startswith('/'):
-        rdir = "/" + rdir
+    def __init__(self):
+        self.rmd_path = None
+        self.lmd_path = None
+        self.sftp = None
+        self.config = None
+        self.host = None
+        self.port = None
+        self.username = None
+        self.local_aux_dir = None
+        self.local_data_dir = None
+        self.pkey = None
+        self.rm_basedir = None
+        self.transport = None
 
-    result = []
+        self.load_config()
 
-    sftp.chdir(rdir)
-    flist = sftp.listdir_attr()
+        # !! when the meta data is in sync we should not need this
+    def get_gfile_list(self, rdir):
+        """
+        create a sorted list of paths to all generalized files
+        :param sftp:
+        :param rdir: remote directory (absolute path)
+        :return:
+        """
 
-    for f in flist:
-        rpath = "%s/%s" % (rdir, f.filename)
-        print(rpath)
-        gf = GeneralizedFile(rpath)
-        if stat.S_ISREG(f.st_mode):
-            # regular file
-            gf.isfile(True)
-        elif stat.S_ISDIR(f.st_mode):
-            # directory
-            gf.isdir(True)
-            # recursively call this function
-            result.extend(get_gfile_list(sftp, rpath))
-        else:
-            # unknown mode
-            msg = "Unknown mode (%s) for file: '%s'" % (f.st_mode, f.filename)
-            raise ValueError(msg)
+        if not rdir.startswith('/'):
+            rdir = "/" + rdir
 
-        result.append(gf)
+        result = []
 
-    # sort by remote path
-    result.sort(key=lambda _gf: _gf.rpath)
-    return result
+        self.sftp.chdir(rdir)
+        flist = self.sftp.listdir_attr()
 
+        for f in flist:
+            rpath = "%s/%s" % (rdir, f.filename)
+            print(rpath)
+            gf = GeneralizedFile(rpath)
+            if stat.S_ISREG(f.st_mode):
+                # regular file
+                gf.isfile(True)
+            elif stat.S_ISDIR(f.st_mode):
+                # directory
+                gf.isdir(True)
+                # recursively call this function
+                result.extend(self.get_gfile_list(rpath))
+            else:
+                # unknown mode
+                msg = "Unknown mode (%s) for file: '%s'" % (f.st_mode, f.filename)
+                raise ValueError(msg)
 
-def pull():
-    config = load_config()
-    host = config['host']
-    port = int(config['port'])
-    username = config['remote_user']
-    pkey = paramiko.RSAKey.from_private_key_file(config['ssh_key_path'])
+            result.append(gf)
 
-    transport = paramiko.Transport((host, port))
-    transport.connect(username=username, pkey=pkey)
-    sftp = paramiko.SFTPClient.from_transport(transport)
+        # sort by remote path
+        result.sort(key=lambda _gf: _gf.rpath)
+        return result
 
-    basedir = config['remote_base_dir']
-    if not basedir.startswith('/'):
-        basedir = "/" + basedir
-    gfl = get_gfile_list(sftp, basedir)
+    def close(self):
+        self.sftp.close()
+        self.transport.close()
 
-    # list with paths only
-    pl = [gf.rpath for gf in gfl]
+    def load_config(self):
+        self.config = fsu.load_config()
+        self.host = self.config['host']
+        self.port = int(self.config['port'])
+        self.username = self.config['remote_user']
+        self.local_aux_dir = self.config['local_aux_dir']
+        self.local_data_dir = self.config['local_data_dir']
+        self.pkey = paramiko.RSAKey.from_private_key_file(self.config['ssh_key_path'])
+        self.rm_basedir = self.config['remote_base_dir']
+        if not self.rm_basedir.startswith('/'):
+            self.rm_basedir = "/" + self.rm_basedir
 
-    # pdx file list path
-    pdx_flp = "%s/%s" % ( basedir, META_DATA_FNAME)
+        self.rmd_path = os.path.join(self.local_aux_dir, fsu.REMOTE_META_DATA_FNAME)
+        self.lmd_path = os.path.join(self.local_aux_dir, fsu.META_DATA_FNAME)
 
-    if pdx_flp not in pl:
-        log.err('probdox metadata not found. Cannot proceed. Please contact admin')
-        sftp.close()
-        transport.close()
-        return
+    def cmp_rem2loc_by_md(self):
+        """
+        compare remote to local by comparing the metada. Find out which files
+        have changed
+        :return:
+        """
 
-    sftp.close()
-    transport.close()
+        rmd = fsu.read_json(self.rmd_path)['files']
+        lmd = fsu.read_json(self.lmd_path)['files']
+
+        rkeys = set(fsu.normalize_paths(rmd.keys(), self.local_data_dir))
+        lkeys = set(fsu.normalize_paths(lmd.keys(), self.local_data_dir))
+
+        common_files = rkeys.intersection(lkeys)
+        missing_local = rkeys - common_files
+        missing_remote = lkeys - common_files
+
+        log.msg(missing_local)
+        log.msg(missing_remote)
+
+        IPS()
+
+    def pull(self):
+
+        self.transport = paramiko.Transport((self.host, self.port))
+        self.transport.connect(username=self.username, pkey=self.pkey)
+        self.sftp = paramiko.SFTPClient.from_transport(self.transport)
+
+        gfl = self.get_gfile_list(self.rm_basedir)
+
+        # list with paths only
+        pl = [gf.rpath for gf in gfl]
+
+        # pdx meta data path
+        mdp = "%s/%s" % (self.rm_basedir, fsu.META_DATA_FNAME)
+
+        if mdp not in pl:
+            log.err('probdox metadata not found. Cannot proceed. Please contact admin')
+            self.close()
+            return
+
+        # now find out which files have changed
+        # -> download remote metadata to a local copy
+
+        # ensure that path exists
+        fsu.mkdir_p(self.local_aux_dir)
+
+        # download
+        self.sftp.get(mdp, self.rmd_path)
+
+        # compare remote to local
+        self.cmp_rem2loc_by_md()
+        #IPS()
+
+        self.close()
 
 
 def keygen():
@@ -117,5 +181,7 @@ def main(*args, **kwargs):
     args = parser.parse_args()
     print(args.command)
 
+    manager = Manager()
+
     if args.command == 'pull':
-        pull()
+        manager.pull()
