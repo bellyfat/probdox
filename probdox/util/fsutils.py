@@ -70,7 +70,7 @@ def tolerant_rmtree(target_path):
     """try to delete a tree, and do nothing if it is already absent"""
     try:
         shutil.rmtree(target_path)
-    except OSError as exc:  # python >2.5
+    except OSError as exc:  # requires python > 2.5
         if exc.errno == errno.ENOENT:
             pass
         else:
@@ -99,6 +99,9 @@ def load_config(path=None):
 
 
 def generate_reference_tree(basedir=BASEDIR, version='01', user=None):
+    """
+    this function is mainly for testing
+    """
 
     # these data structures contain all possible reference files
     # version differences are applied via diffs
@@ -165,6 +168,7 @@ class GeneralizedFile(object):
         self._isfile = None
         self.hash_value = None
 
+        # remote and local paths
         self.rpath = rpath
         self.lpath = lpath
 
@@ -181,7 +185,8 @@ class GeneralizedFile(object):
             assert self._isfile is None
             self._isfile = not value
         else:
-            raise ValueError("Expexted True/False, got unknown Value: %s of type %s." % (value, type(value)))
+            msg = "Expexted True/False, got unknown Value: %s of type %s." % (value, type(value))
+            raise ValueError(msg)
 
     def isfile(self, value=None):
         if value is None:
@@ -244,7 +249,7 @@ class GeneralizedFile(object):
 
 def normalize_paths(pathseq, basedir):
     """
-    truncate everythin before basedir
+    truncate everything before basedir
 
     :param pathseq:     sequence of path strings
     :return:
@@ -303,7 +308,6 @@ def read_json(path):
 def write_meta_data(targetpath, basedir, user):
 
     data_dict = generate_meta_data(basedir, user)
-
     write_json(data_dict, targetpath)
 
 
