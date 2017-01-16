@@ -28,7 +28,7 @@ import stat
 import probdox.util.fsutils as fsu
 from probdox.util.fsutils import log, GeneralizedFile
 
-from IPython import embed as IPS
+from ipHelp import IPS
 
 # The code in this file is in Python 3 syntax
 # ensure the right interpreter is used
@@ -38,7 +38,8 @@ assert sys.version_info[0] == 3
 class Manager(object):
 
     def __init__(self):
-        self.rmd_path = None
+        self.nrmd_path = None
+        self.ormd_path = None
         self.lmd_path = None
         self.sftp = None
         self.config = None
@@ -53,7 +54,9 @@ class Manager(object):
 
         self.load_config()
 
-        # !! when the meta data is in sync we should not need this
+    #  when the meta data is in sync we should not need this
+    # It could be used as consistency check
+    # pl = [gf.rpath for gf in gfl]
     def get_gfile_list(self, rdir):
         """
         create a sorted list of paths to all generalized files
@@ -93,6 +96,11 @@ class Manager(object):
         result.sort(key=lambda _gf: _gf.rpath)
         return result
 
+    def open_sftp(self):
+        self.transport = paramiko.Transport((self.host, self.port))
+        self.transport.connect(username=self.username, pkey=self.pkey)
+        self.sftp = paramiko.SFTPClient.from_transport(self.transport)
+
     def close(self):
         self.sftp.close()
         self.transport.close()
@@ -109,17 +117,28 @@ class Manager(object):
         if not self.rm_basedir.startswith('/'):
             self.rm_basedir = "/" + self.rm_basedir
 
-        self.rmd_path = os.path.join(self.local_aux_dir, fsu.REMOTE_META_DATA_FNAME)
+        self.nrmd_path = os.path.join(self.local_aux_dir, fsu.NEW_REMOTE_META_DATA_FNAME)
+        self.ormd_path = os.path.join(self.local_aux_dir, fsu.OLD_REMOTE_META_DATA_FNAME)
         self.lmd_path = os.path.join(self.local_aux_dir, fsu.META_DATA_FNAME)
 
-    def cmp_rem2loc_by_md(self):
+    def cmp_rem2loc_by_md(self, new_old):
         """
-        compare remote to local by comparing the metada. Find out which files
+        compare remote to local by comparing the metadata. Find out which files
         have changed
+
+        :new_old:   either "new" or "old"; specifies which remote metadata is
+                    to use
+
         :return:
         """
 
-        rmd = fsu.read_json(self.rmd_path)['files']
+        if new_old == "new":
+            rmd = fsu.read_json(self.nrmd_path)['files']
+        elif new_old == "old":
+            rmd = fsu.read_json(self.ormd_path)['files']
+        else:
+            raise ValueError("Invalid value for new_new_old: " + str(new_old))
+
         lmd = fsu.read_json(self.lmd_path)['files']
 
         rkeys = set(fsu.normalize_paths(rmd.keys(), self.local_data_dir))
@@ -134,37 +153,36 @@ class Manager(object):
 
         IPS()
 
-    def pull(self):
+    def pull_info(self):
+        """
+        pulls metada from remote and compares it to local metadata
 
-        self.transport = paramiko.Transport((self.host, self.port))
-        self.transport.connect(username=self.username, pkey=self.pkey)
-        self.sftp = paramiko.SFTPClient.from_transport(self.transport)
+        :return:
+        """
 
-        gfl = self.get_gfile_list(self.rm_basedir)
-
-        # list with paths only
-        pl = [gf.rpath for gf in gfl]
+        self.open_sftp()
 
         # pdx meta data path
         mdp = "%s/%s" % (self.rm_basedir, fsu.META_DATA_FNAME)
 
-        if mdp not in pl:
-            log.err('probdox metadata not found. Cannot proceed. Please contact admin')
-            self.close()
-            return
-
         # now find out which files have changed
-        # -> download remote metadata to a local copy
 
-        # ensure that path exists
+        # ensure that target path exists
         fsu.mkdir_p(self.local_aux_dir)
 
-        # download
-        self.sftp.get(mdp, self.rmd_path)
+        # download remote metadata to a local copy (will be "new metadata")
+
+        try:
+            self.sftp.get(mdp, self.nrmd_path)
+        except FileNotFoundError as ex:
+            log.err('probdox metadata not found. Cannot proceed. Please contact admin')
+            self.close()
+            msg = "File not found in server: " + mdp
+            raise FileNotFoundError(msg)
 
         # compare remote to local
-        self.cmp_rem2loc_by_md()
-        #IPS()
+        self.cmp_rem2loc_by_md('new')
+        # IPS()
 
         self.close()
 
@@ -183,5 +201,5 @@ def main(*args, **kwargs):
 
     manager = Manager()
 
-    if args.command == 'pull':
-        manager.pull()
+    if args.command == 'pull-info':
+        manager.pull_info()

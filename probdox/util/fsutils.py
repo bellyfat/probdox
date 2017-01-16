@@ -27,7 +27,7 @@ import errno
 import hashlib
 import json
 import configparser
-from IPython import embed as IPS
+from ipHelp import IPS
 
 # The code in this file is in Python 3 syntax
 # ensure the right interpreter is used
@@ -38,7 +38,8 @@ CONFIG_PATH = "config.ini"
 META_DATA_FNAME = 'metadata.pdx'
 
 # fname for the remote meta data file after download
-REMOTE_META_DATA_FNAME = 'metadata.pdx.remote'
+NEW_REMOTE_META_DATA_FNAME = 'metadata.pdx.remote-new'
+OLD_REMOTE_META_DATA_FNAME = 'metadata.pdx.remote-old'
 
 
 class Logger(object):
@@ -249,18 +250,19 @@ class GeneralizedFile(object):
 
 def normalize_paths(pathseq, basedir):
     """
-    truncate everything before basedir
+    truncate everything before the last segment of basedir
 
     :param pathseq:     sequence of path strings
     :return:
     """
 
     result = []
-    IPS()
+
+    relevant_segment = os.path.split(basedir)[-1]
     for path in pathseq:
-        idx = path.find(basedir)
+        idx = path.find(relevant_segment)
         if idx == -1:
-            msg = "basedir '%s' was not found in path %s" % (basedir, path)
+            msg = "basedir '%s' was not found in path %s" % (relevant_segment, path)
             raise ValueError(msg)
 
         result.append(path[idx:])

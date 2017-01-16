@@ -24,7 +24,7 @@ import sys
 import unittest
 from probdox.util import fsutils
 
-from IPython import embed as IPS
+# from IPython import embed as IPS
 
 
 # The code in this file is in Python 3 syntax
@@ -43,6 +43,9 @@ class TestSync1(unittest.TestCase):
 
     def test_pull(self):
         pass
+
+    # TODO: Test with different working directories
+    # TODO: Test IPS residues
 
 
 if __name__ == '__main__':
