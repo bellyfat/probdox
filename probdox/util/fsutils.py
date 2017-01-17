@@ -50,18 +50,26 @@ META_DATA_FORMAT_VERSION = 2
 # quick and dirty way to store some global variables on module level
 class ConfigContainer(object):
     def __init__(self):
-        self._config = None
+        self.local_data_dir = None
+        self.load_config()
 
-    @property
-    def config(self):
-        if self._config is None:
-            self._config = load_config()
+    def load_config(self, mypath=None):
+        if mypath is None:
+            mypath = CONFIG_PATH
+        complete_config = configparser.ConfigParser()
+        res = complete_config.read(mypath)
+        if len(res) == 0:
+            msg = "Config file {} not found".format(mypath)
+            raise FileNotFoundError(msg)
 
-        return self._config
+        # create a shorthand for the default config
+        theconfig = complete_config['DEFAULT']
 
+        # allow easy attribute access to config variables
+        self.__dict__.update(theconfig)
+        return theconfig
 
 config = ConfigContainer()
-
 
 
 class Logger(object):
@@ -109,28 +117,13 @@ def write_file(filepath, content):
         myfile.write(content)
 
 
-def load_config(mypath=None):
-    if mypath is None:
-        mypath = CONFIG_PATH
-    complete_config = configparser.ConfigParser()
-    res = complete_config.read(mypath)
-    if len(res) == 0:
-        msg = "Config file {} not found".format(mypath)
-        raise FileNotFoundError(msg)
-
-    # create a shorthand for the default config
-    config = complete_config['DEFAULT']
-
-    return config
-
-
 def generate_reference_tree(basedir=None, version='01', user=None):
     """
     this function is mainly for testing
     """
 
     if basedir is None:
-        basedir = os.path.join(BASEDIR, config.config['local_data_dir'])
+        basedir = os.path.join(BASEDIR, config.local_data_dir)
 
     # these data structures contain all possible reference files
     # version differences are applied via diffs
@@ -181,7 +174,7 @@ def generate_reference_tree(basedir=None, version='01', user=None):
         d = os.path.join(basedir, d)
         mkdir_p(d)
 
-    print('Reference data created.')
+    # print('Reference data created.')
 
     targetpath = os.path.join(basedir, META_DATA_FNAME)
     write_meta_data(targetpath, basedir, user)
@@ -305,7 +298,7 @@ def normalize_paths(pathseq, basedir=None):
 
         # use the local data dir from the config
         # (assuming it has already been loaded)
-        basedir = config.config['local_data_dir']
+        basedir = config.local_data_dir
 
     result = []
 
@@ -339,7 +332,7 @@ def real_lpath_from_nmld_path(thepath, basedir=None):
         return [real_lpath_from_nmld_path(p) for p in thepath]
 
     if basedir is None:
-        basedir = config.config['local_data_dir']
+        basedir = config.local_data_dir
 
     ldd_tail = os.path.split(basedir)[-1]  # only the last part
 

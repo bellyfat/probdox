@@ -106,14 +106,14 @@ class Manager(object):
         self.transport.close()
 
     def load_config(self):
-        self.config = fsu.load_config()
-        self.host = self.config['host']
-        self.port = int(self.config['port'])
-        self.username = self.config['remote_user']
-        self.local_aux_dir = self.config['local_aux_dir']
-        self.local_data_dir = self.config['local_data_dir']
-        self.pkey = paramiko.RSAKey.from_private_key_file(self.config['ssh_key_path'])
-        self.rm_basedir = self.config['remote_base_dir']
+        self.config = fsu.config
+        self.host = self.config.host
+        self.port = int(self.config.port)
+        self.username = self.config.remote_user
+        self.local_aux_dir = self.config.local_aux_dir
+        self.local_data_dir = self.config.local_data_dir
+        self.pkey = paramiko.RSAKey.from_private_key_file(self.config.ssh_key_path)
+        self.rm_basedir = self.config.remote_base_dir
         if not self.rm_basedir.startswith('/'):
             self.rm_basedir = "/" + self.rm_basedir
 

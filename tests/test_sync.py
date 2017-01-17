@@ -40,7 +40,6 @@ class TestSync1(unittest.TestCase):
 
     def tearDown(self):
         fsutils.tolerant_rmtree('reference')
-        print('Reference data removed.')
 
     def test_pull(self):
         pass
@@ -53,18 +52,14 @@ class TestInternals(unittest.TestCase):
 
     def tearDown(self):
         fsutils.tolerant_rmtree('reference')
-        print('Reference data removed.')
 
     def test_normalized_paths(self):
 
-        ldd_tail = os.path.split(fsutils.config.config['local_data_dir'])[-1]
+        ldd_tail = os.path.split(fsutils.config.local_data_dir)[-1]
         my_nmld_path = os.path.join(ldd_tail, 'foo/bar')
         real_lpath = fsutils.real_lpath_from_nmld_path(my_nmld_path)
         res = fsutils.normalize_paths(real_lpath)
-        IPS()
         self.assertEqual(res, my_nmld_path)
-
-
 
     # TODO: Test with different working directories
     # TODO: Test IPS residues
