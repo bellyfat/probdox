@@ -27,7 +27,11 @@ import errno
 import hashlib
 import json
 import configparser
-from ipHelp import IPS
+
+try:
+    from ipHelp import IPS
+except ImportError:
+    from IPython import embed as IPS
 
 # The code in this file is in Python 3 syntax
 # ensure the right interpreter is used
@@ -40,6 +44,24 @@ META_DATA_FNAME = 'metadata.pdx'
 # fname for the remote meta data file after download
 NEW_REMOTE_META_DATA_FNAME = 'metadata.pdx.remote-new'
 OLD_REMOTE_META_DATA_FNAME = 'metadata.pdx.remote-old'
+META_DATA_FORMAT_VERSION = 2
+
+
+# quick and dirty way to store some global variables on module level
+class ConfigContainer(object):
+    def __init__(self):
+        self._config = None
+
+    @property
+    def config(self):
+        if self._config is None:
+            self._config = load_config()
+
+        return self._config
+
+
+config = ConfigContainer()
+
 
 
 class Logger(object):
@@ -53,14 +75,14 @@ class Logger(object):
 log = Logger()
 
 
-def mkdir_p(path):
+def mkdir_p(mypath):
     """
     create a path and accept if it alread exists
     """
     try:
-        os.makedirs(path)
+        os.makedirs(mypath)
     except OSError as exc:  # Python >2.5
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
+        if exc.errno == errno.EEXIST and os.path.isdir(mypath):
             # print(path, 'already exists')
             pass
         else:
@@ -79,19 +101,22 @@ def tolerant_rmtree(target_path):
 
 
 def write_file(filepath, content):
-    path, fname = os.path.split(filepath)
+    mypath, fname = os.path.split(filepath)
 
-    mkdir_p(path)
+    mkdir_p(mypath)
 
     with open(filepath, 'w') as myfile:
         myfile.write(content)
 
 
-def load_config(path=None):
-    if path is None:
-        path = CONFIG_PATH
+def load_config(mypath=None):
+    if mypath is None:
+        mypath = CONFIG_PATH
     complete_config = configparser.ConfigParser()
-    complete_config.read(path)
+    res = complete_config.read(mypath)
+    if len(res) == 0:
+        msg = "Config file {} not found".format(mypath)
+        raise FileNotFoundError(msg)
 
     # create a shorthand for the default config
     config = complete_config['DEFAULT']
@@ -99,10 +124,13 @@ def load_config(path=None):
     return config
 
 
-def generate_reference_tree(basedir=BASEDIR, version='01', user=None):
+def generate_reference_tree(basedir=None, version='01', user=None):
     """
     this function is mainly for testing
     """
+
+    if basedir is None:
+        basedir = os.path.join(BASEDIR, config.config['local_data_dir'])
 
     # these data structures contain all possible reference files
     # version differences are applied via diffs
@@ -164,17 +192,25 @@ class GeneralizedFile(object):
     Hold information about a generalized file (file or directory)
     """
 
-    def __init__(self, rpath, lpath=None):
+    def __init__(self, thepath, normalized=False):
         self._isdir = None
         self._isfile = None
         self.hash_value = None
 
-        # remote and local paths
-        self.rpath = rpath
-        self.lpath = lpath
+        # paths
+
+        if normalized:
+            assert normalize_paths(thepath) == thepath
+            self.nmld_path = thepath
+            self.real_lpath = real_lpath_from_nmld_path(thepath)
+        else:
+            self.nmld_path = normalize_paths(thepath)
+            self.real_lpath = thepath
+
+        self.real_rpath = None  # probably obsolete
 
     def __repr__(self):
-        result = "GF(%s | %s)" % (self.rpath, self.lpath)
+        result = "GF({})".format(self.nmld_path)
         return result
 
     def isdir(self, value=None):
@@ -204,12 +240,12 @@ class GeneralizedFile(object):
             # type not yet specified
 
             # try to find out in local context
-            if self.lpath is None:
+            if self.real_lpath is None:
                 msg = "Can not find out type of %s without local path" % self
                 raise ValueError(msg)
 
-            self._isdir = os.path.isdir(self.lpath)
-            self._isfile = os.path.isfile(self.lpath)
+            self._isdir = os.path.isdir(self.real_lpath)
+            self._isfile = os.path.isfile(self.real_lpath)
 
         if self._isdir:
             return "dir"
@@ -228,7 +264,7 @@ class GeneralizedFile(object):
         blocksize = 65536
         hasher = hashlib.sha256()
         # copied from http://pythoncentral.io/hashing-files-with-python/
-        with open(self.lpath, "rb") as myfile:
+        with open(self.real_lpath, "rb") as myfile:
             buf = myfile.read(blocksize)
             while len(buf) > 0:
                 hasher.update(buf)
@@ -240,7 +276,7 @@ class GeneralizedFile(object):
 
         :return:        dictionary like {'a_path': ..., 'type': ..., 'hash': ...}
         """
-        assert self.lpath is not None
+        assert self.real_lpath is not None
         result = {'hash': self.calc_hash(),
                   'type': self.get_type(),
                   'tstamp': None,
@@ -248,26 +284,68 @@ class GeneralizedFile(object):
         return result
 
 
-def normalize_paths(pathseq, basedir):
+# TODO: refactor to make the scalar case the default
+def normalize_paths(pathseq, basedir=None):
     """
     truncate everything before the last segment of basedir
 
-    :param pathseq:     sequence of path strings
+    :param pathseq:     sequence of path strings (or single string)
     :return:
     """
+
+    if isinstance(pathseq, str):
+        return_string = True
+        pathseq = [pathseq]
+    else:
+        return_string = False
+
+    if basedir is None:
+        # if 0 and config.config is None:
+        #     load_config()
+
+        # use the local data dir from the config
+        # (assuming it has already been loaded)
+        basedir = config.config['local_data_dir']
 
     result = []
 
     relevant_segment = os.path.split(basedir)[-1]
-    for path in pathseq:
-        idx = path.find(relevant_segment)
+    for thepath in pathseq:
+        idx = thepath.find(relevant_segment)
         if idx == -1:
-            msg = "basedir '%s' was not found in path %s" % (relevant_segment, path)
+            msg = "basedir '%s' was not found in path %s" % (relevant_segment, thepath)
             raise ValueError(msg)
 
-        result.append(path[idx:])
+        result.append(thepath[idx:])
 
+    if return_string:
+        assert len(result) == 1
+        result = result[0]
     return result
+
+
+def real_lpath_from_nmld_path(thepath, basedir=None):
+    """
+    Convert a normalized path into a real local path.
+    This is the counter operation to normalize_paths.
+
+    :param thepath:
+    :param basedir:     a real path of the directory where the
+                        normlized path is relative to
+    :return:
+    """
+
+    if isinstance(thepath, (list, tuple)):
+        return [real_lpath_from_nmld_path(p) for p in thepath]
+
+    if basedir is None:
+        basedir = config.config['local_data_dir']
+
+    ldd_tail = os.path.split(basedir)[-1]  # only the last part
+
+    # plug in the full path, i.e. all parts which have been
+    # removed by normalization
+    return thepath.replace(ldd_tail, basedir)
 
 
 def generate_meta_data(basedir, user=None):
@@ -276,21 +354,21 @@ def generate_meta_data(basedir, user=None):
     # it allows to store additional information (not related to any specific file)
 
     res_dict = {}
-    filedict = {}  # this will become a dict like {fname1: {data1}, ...}
-    for root, dirs, files in os.walk(basedir):
+    gfiledict = {}  # this will become a dict like {normpath1: {data1}, ...}
+    for rootdir, dirs, files in os.walk(basedir):
         # if len(dirs) == len(files) == 0:
         #     # empty directory
 
-        gf = GeneralizedFile(rpath=None, lpath=root)
-        filedict[gf.lpath] = gf.to_dict(user=user)
+        # add the directory itself
+        gf = GeneralizedFile(thepath=rootdir)
+        gfiledict[gf.nmld_path] = gf.to_dict(user=user)
 
         for f in files:
-            path = os.path.join(root, f)
-            gf = GeneralizedFile(rpath=None, lpath=path)
-            filedict[gf.lpath] = gf.to_dict(user=user)
+            gf = GeneralizedFile(thepath=os.path.join(rootdir, f))
+            gfiledict[gf.nmld_path] = gf.to_dict(user=user)
 
     res_dict['meta_information'] = None
-    res_dict['files'] = filedict
+    res_dict['files'] = gfiledict
 
     return res_dict
 

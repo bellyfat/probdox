@@ -148,8 +148,10 @@ class Manager(object):
         missing_local = rkeys - common_files
         missing_remote = lkeys - common_files
 
-        log.msg(missing_local)
-        log.msg(missing_remote)
+        log.msg("locally missing files: ", missing_local)
+        log.msg("remotely missing files: ", missing_remote)
+
+        # now find changed files
 
         IPS()
 

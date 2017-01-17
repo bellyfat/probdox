@@ -21,10 +21,11 @@ along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import sys
+import os
 import unittest
 from probdox.util import fsutils
 
-# from IPython import embed as IPS
+from IPython import embed as IPS
 
 
 # The code in this file is in Python 3 syntax
@@ -43,6 +44,27 @@ class TestSync1(unittest.TestCase):
 
     def test_pull(self):
         pass
+
+
+class TestInternals(unittest.TestCase):
+
+    def setUp(self):
+        fsutils.generate_reference_tree()
+
+    def tearDown(self):
+        fsutils.tolerant_rmtree('reference')
+        print('Reference data removed.')
+
+    def test_normalized_paths(self):
+
+        ldd_tail = os.path.split(fsutils.config.config['local_data_dir'])[-1]
+        my_nmld_path = os.path.join(ldd_tail, 'foo/bar')
+        real_lpath = fsutils.real_lpath_from_nmld_path(my_nmld_path)
+        res = fsutils.normalize_paths(real_lpath)
+        IPS()
+        self.assertEqual(res, my_nmld_path)
+
+
 
     # TODO: Test with different working directories
     # TODO: Test IPS residues
